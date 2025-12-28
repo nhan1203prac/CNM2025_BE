@@ -3,6 +3,7 @@ uvicorn
 python-dotenv
 sqlalchemy
 pydantic
+email-validator
 pydantic-settings
 mysql-connector-python
 python-jose[cryptography]
