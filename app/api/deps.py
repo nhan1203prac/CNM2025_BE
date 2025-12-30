@@ -39,3 +39,12 @@ def get_current_active_admin(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
     return current_user
+
+def get_current_user(db: Session = Depends(get_db)):
+    # HARD CODE USER ID = 1
+    user = db.query(User).filter(User.id == 1).first()
+
+    if not user:
+        raise Exception("Hardcoded user not found")
+
+    return user
