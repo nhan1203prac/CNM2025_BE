@@ -6,12 +6,14 @@ from app.db.base import Base
 from app.db.session import engine
 
 app = FastAPI(title="FastAPI E-commerce API")
-#Tạo bảng trong sql
+
 Base.metadata.create_all(bind=engine)
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(product_router, prefix="/api/v1") # /api/v1/products
 app.include_router(category_router, prefix="/api/v1") # /api/v1/categories
+app.include_router(cart_router, prefix="/api/v1")
+app.include_router(favorites_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
