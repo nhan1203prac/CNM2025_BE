@@ -3,6 +3,9 @@ from app.api.auth import router as auth_router
 from app.api.product import router as product_router
 from app.api.category import router as category_router
 from app.db.base import Base 
+from app.api.cart import router as cart_router
+from app.api.favorites import router as favorites_router
+from app.db.base import Base
 from app.db.session import engine
 
 app = FastAPI(title="FastAPI E-commerce API")
