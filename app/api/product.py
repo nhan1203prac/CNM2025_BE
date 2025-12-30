@@ -14,13 +14,14 @@ router = APIRouter(prefix="/products", tags=["Products"])
 @router.get("/", response_model=List[ProductResponse])
 def read_products(
     db: Session = Depends(get_db),
-    skip: int = 0,
-    limit: int = 10,
+    page: int = Query(1, ge=1, description="Số trang (bắt đầu từ 1)"),
+    size: int = Query(10, ge=1, le=100, description="Số lượng mỗi trang"),
     min_price: Optional[Decimal] = Query(None, description="Giá tối thiểu"),
     max_price: Optional[Decimal] = Query(None, description="Giá tối đa"),
     category_id: Optional[int] = Query(None, description="Lọc theo ID danh mục"),
     search: Optional[str] = Query(None, description="Tìm kiếm theo tên")
 ):
+    skip = (page - 1) * size
     query = db.query(Product)
 
     if category_id:
@@ -32,7 +33,7 @@ def read_products(
     if search:
         query = query.filter(Product.name.ilike(f"%{search}%"))
 
-    products = query.offset(skip).limit(limit).all()
+    products = query.offset(skip).limit(size).all()
     return products
 
 # GET /products/{id}: Chi tiết sản phẩm (Public)
