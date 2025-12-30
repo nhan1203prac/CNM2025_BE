@@ -15,8 +15,6 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
-
-
 #connect database
 def get_db():
     db = SessionLocal()

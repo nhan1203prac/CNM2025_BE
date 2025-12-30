@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, Date, TIMESTAMP, ForeignKey, text
+from sqlalchemy.orm import relationship
 from app.db.base_class import Base
 
 class Profile(Base):
@@ -11,3 +12,4 @@ class Profile(Base):
     gender = Column(String(10), nullable=True)
     dob = Column(Date, nullable=True)
     updated_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
+    user = relationship("User", back_populates="profile")
