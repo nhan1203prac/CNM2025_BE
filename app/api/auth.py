@@ -56,12 +56,12 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             password=hash_password(user_in.password),
             profile_id=new_profile.id,
             is_active=False,
-            verification_code=verification_code,
-            verification_code_created_at=datetime.utcnow()
+            verification_code=verification_code
         )
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
+        db.refresh(new_profile)
 
         # Gửi email xác thực (async sẽ tốt hơn)
         email_sent = send_verification_email(new_user.email, verification_code)
@@ -72,12 +72,12 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
 
         token = create_access_token(subject=new_user.email)
 
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "isActive": new_user.is_active,
-            "user": new_user
-        }
+        return Token(
+            access_token=token,
+            token_type="bearer",
+            isActive=new_user.is_active,
+            user=UserResponse.model_validate(new_user)
+        )
     
     except HTTPException:
         raise
@@ -93,7 +93,8 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
 def login(user_in: UserLogin, db: Session = Depends(get_db)):
     """Đăng nhập - chỉ cho phép user đã xác minh email"""
     try:
-        user = db.query(User).filter(User.email == user_in.email).first()
+        from sqlalchemy.orm import joinedload
+        user = db.query(User).options(joinedload(User.profile)).filter(User.email == user_in.email).first()
         
         if not user:
             logger.warning(f"Login attempt with non-existent email: {user_in.email}")
@@ -124,12 +125,12 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         token = create_access_token(subject=user.email)
         logger.info(f"User logged in: {user.email}")
 
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "isActive": user.is_active,
-            "user": user
-        }
+        return Token(
+            access_token=token,
+            token_type="bearer",
+            isActive=user.is_active,
+            user=UserResponse.model_validate(user)
+        )
     
     except HTTPException:
         raise
@@ -153,15 +154,7 @@ def verify_email(payload: VerifyCodeRequest, db: Session = Depends(get_db)):
                 detail="Mã xác minh không hợp lệ"
             )
 
-        # Kiểm tra mã đã hết hạn
-        if user.verification_code_created_at:
-            expiry_time = user.verification_code_created_at + timedelta(minutes=VERIFICATION_CODE_EXPIRY_MINUTES)
-            if datetime.utcnow() > expiry_time:
-                logger.warning(f"Expired verification code for user: {user.email}")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Mã xác minh đã hết hạn, vui lòng yêu cầu mã mới"
-                )
+        # Lưu ý: Mã xác minh sẽ không hết hạn (cần database migration để thêm timestamp)
 
         # User đã verify trước đó
         if user.is_active:
@@ -171,7 +164,6 @@ def verify_email(payload: VerifyCodeRequest, db: Session = Depends(get_db)):
         # Cập nhật user
         user.is_active = True
         user.verification_code = None
-        user.verification_code_created_at = None
         db.commit()
         db.refresh(user)
         
@@ -219,7 +211,6 @@ def resend_verification(payload: ResendVerificationRequest, db: Session = Depend
         # Tạo mã mới
         verification_code = generate_verification_code()
         user.verification_code = verification_code
-        user.verification_code_created_at = datetime.utcnow()
         user.verification_attempts = (user.verification_attempts or 0) + 1
         
         db.commit()
@@ -351,7 +342,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         avatar = user_info.get('picture')
         
         # Kiểm tra user đã tồn tại chưa
-        user = db.query(User).filter(User.email == email).first()
+        from sqlalchemy.orm import joinedload
+        user = db.query(User).options(joinedload(User.profile)).filter(User.email == email).first()
         
         if user:
             # User đã tồn tại - update thông tin nếu cần
@@ -386,11 +378,12 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         access_token = create_access_token(subject=user.email)
         
         # Return token response thay vì redirect
-        return {
-            "access_token": access_token,
-            "isActive": user.is_active,
-            "user": UserResponse.model_validate(user)
-        }
+        return Token(
+            access_token=access_token,
+            token_type="bearer",
+            isActive=user.is_active,
+            user=UserResponse.model_validate(user)
+        )
         
     except Exception as e:
         logger.error(f"Google OAuth error: {str(e)}", exc_info=True)

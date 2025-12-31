@@ -71,8 +71,15 @@ def get_token_from_header(authorization: str = Header(None, alias="Authorization
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Xử lý cả hai format: "Bearer <token>" và chỉ "<token>"
     parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
+    
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        token = parts[1]
+    elif len(parts) == 1:
+        # Token được gửi trực tiếp từ Swagger (không có "Bearer")
+        token = parts[0]
+    else:
         logger.error(f"Invalid Authorization format: {authorization}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -80,8 +87,8 @@ def get_token_from_header(authorization: str = Header(None, alias="Authorization
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    logger.info(f"Token extracted: {parts[1][:20]}...")
-    return parts[1]
+    logger.info(f"Token extracted: {token[:20]}...")
+    return token
 
 def get_current_user_from_token(token: str = Depends(get_token_from_header)) -> str:
     """
