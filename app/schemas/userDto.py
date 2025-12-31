@@ -27,7 +27,7 @@ class ProfileResponse(BaseModel):
     gender: Optional[str] = None
     dob: Optional[date] = None
     
-    # d├▓ng n├áy gi├║p ─æß╗ìc dß╗» liß╗çu tß╗½ ORM model ß╗ƒ dß║íng object v├¡ dß╗Ñ User.profile.full_name
+    # Cho phép đọc dữ liệu từ ORM model (ví dụ: User.profile.full_name)
     class Config:
         from_attributes = True
 
@@ -57,4 +57,3 @@ class ResendVerificationRequest(BaseModel):
 
 class VerifyCodeRequest(BaseModel):
     verification_code: str
-    
