@@ -43,3 +43,38 @@ def send_verification_email(email: str, code: str) -> bool:
     except Exception as e:
         print(f"Lỗi gửi email: {e}")
         return False
+
+
+def send_password_reset_email(email: str, token: str) -> bool:
+    """Gửi email chứa link/token đặt lại mật khẩu"""
+    try:
+        reset_link = f"http://localhost:3000/reset-password?token={token}"
+
+        msg = MIMEMultipart()
+        msg['From'] = settings.SMTP_USER
+        msg['To'] = email
+        msg['Subject'] = 'Đặt lại mật khẩu'
+
+        body = f"""
+        <html>
+            <body>
+                <h2>Yêu cầu đặt lại mật khẩu</h2>
+                <p>Bạn vừa yêu cầu đặt lại mật khẩu. Nếu đó là bạn, bấm vào link dưới đây:</p>
+                <p><a href="{reset_link}">Đặt lại mật khẩu</a></p>
+                <p>Hoặc sử dụng token: <b>{token}</b></p>
+                <p>Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
+            </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(body, 'html'))
+
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+            server.starttls()
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.send_message(msg)
+
+        return True
+    except Exception as e:
+        print(f"Lỗi gửi email reset mật khẩu: {e}")
+        return False
