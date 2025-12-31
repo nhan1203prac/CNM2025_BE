@@ -19,7 +19,9 @@ class User(Base):
         server_default=text("CURRENT_TIMESTAMP")
     )
     verification_code = Column(String(100), nullable=True)
+    verification_attempts = Column(Integer, default=0)
     password_reset_token = Column(String(100), nullable=True)
+    last_login = Column(TIMESTAMP, nullable=True)
 
     profile_id = Column(Integer, ForeignKey("user_profiles.id", ondelete="SET NULL"), nullable=True)
-    profile = relationship("Profile", back_populates="user")
+    profile = relationship("Profile", back_populates="user", uselist=False)
