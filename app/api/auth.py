@@ -1,64 +1,401 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm 
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+import logging
+
 from app.db.session import get_db
 from app.models.user import User
 from app.models.profile import Profile
-from app.schemas.userDto import UserCreate, UserLogin, Token
-from app.core.security import get_password_hash, verify_password, create_access_token
+from app.schemas.userDto import ProfileResponse, ProfileUpdate, UserCreate, UserLogin, Token, VerifyCodeRequest, ResendVerificationRequest, UserResponse
+from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
+from app.core.email_utils import generate_verification_code, send_verification_email
+from app.core.validators import validate_email, validate_password, validate_username
+from app.core.dependencies import get_current_user
+from app.core.google_oauth import oauth, save_oauth_state, get_oauth_state
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# Constants
+VERIFICATION_CODE_EXPIRY_MINUTES = 15
+MAX_VERIFICATION_ATTEMPTS = 3
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    user_exists = db.query(User).filter(
-        (User.email == user_in.email) | (User.username == user_in.username)
-    ).first()
-    
-    if user_exists:
-        raise HTTPException(status_code=400, detail="Username hoặc Email đã tồn tại")
-
-    new_profile = Profile(full_name=user_in.full_name)
-    db.add(new_profile)
-    db.flush()
-
-    new_user = User(
-        username=user_in.username,
-        email=user_in.email,
-        password=get_password_hash(user_in.password),
-        profile_id=new_profile.id,
-        is_active=False
-    )
-    db.add(new_user)
-    
+    """Đăng ký tài khoản mới"""
     try:
+        # Validate input
+        validate_username(user_in.username)
+        validate_email(user_in.email)
+        validate_password(user_in.password)
+        
+        # Kiểm tra user đã tồn tại
+        user_exists = db.query(User).filter(
+            (User.email == user_in.email) | (User.username == user_in.username)
+        ).first()
+        
+        if user_exists:
+            logger.warning(f"Register attempt with existing email/username: {user_in.email}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username hoặc Email đã tồn tại"
+            )
+
+        # Tạo mã xác thực
+        verification_code = generate_verification_code()
+
+        # Tạo profile và user
+        new_profile = Profile(full_name=user_in.full_name)
+        db.add(new_profile)
+        db.flush()
+
+        new_user = User(
+            username=user_in.username,
+            email=user_in.email,
+            password=hash_password(user_in.password),
+            profile_id=new_profile.id,
+            is_active=False,
+            verification_code=verification_code,
+            verification_code_created_at=datetime.utcnow()
+        )
+        db.add(new_user)
         db.commit()
         db.refresh(new_user)
-    except Exception:
+
+        # Gửi email xác thực (async sẽ tốt hơn)
+        email_sent = send_verification_email(new_user.email, verification_code)
+        if not email_sent:
+            logger.error(f"Failed to send verification email to {new_user.email}")
+
+        logger.info(f"New user registered: {new_user.email}")
+
+        token = create_access_token(subject=new_user.email)
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "isActive": new_user.is_active,
+            "user": new_user
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Lỗi hệ thống")
-
-    token = create_access_token(subject=new_user.email)
-
-    return {
-        "access_token": token,
-        "isActive": new_user.is_active,
-        "user": new_user
-    }
+        logger.error(f"Registration error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi hệ thống, vui lòng thử lại"
+        )
 
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(user_in: UserLogin, db: Session = Depends(get_db)):
+    """Đăng nhập - chỉ cho phép user đã xác minh email"""
+    try:
+        user = db.query(User).filter(User.email == user_in.email).first()
+        
+        if not user:
+            logger.warning(f"Login attempt with non-existent email: {user_in.email}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email hoặc mật khẩu không đúng"
+            )
+        
+        if not verify_password(user_in.password, user.password):
+            logger.warning(f"Failed login attempt for user: {user_in.email}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email hoặc mật khẩu không đúng"
+            )
 
-    user = db.query(User).filter(User.email == form_data.username).first()
+        # Kiểm tra email đã xác minh chưa
+        if not user.is_active:
+            logger.warning(f"Login attempt with unverified email: {user_in.email}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vui lòng xác minh email trước khi đăng nhập"
+            )
+
+        # Update last login time (optional)
+        user.last_login = datetime.utcnow()
+        db.commit()
+
+        token = create_access_token(subject=user.email)
+        logger.info(f"User logged in: {user.email}")
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "isActive": user.is_active,
+            "user": user
+        }
     
-    if not user or not verify_password(form_data.password, user.password):
-        raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi hệ thống"
+        )
 
-    token = create_access_token(subject=user.email)
+@router.post("/verify-email")
+def verify_email(payload: VerifyCodeRequest, db: Session = Depends(get_db)):
+    """Xác minh email bằng mã được gửi"""
+    try:
+        user = db.query(User).filter(User.verification_code == payload.verification_code).first()
 
-    return {
-        "access_token": token,
-        "token_type": "bearer", 
-        "isActive": user.is_active,
-        "user": user
-    }
+        if not user:
+            logger.warning("Invalid verification code attempt")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã xác minh không hợp lệ"
+            )
+
+        # Kiểm tra mã đã hết hạn
+        if user.verification_code_created_at:
+            expiry_time = user.verification_code_created_at + timedelta(minutes=VERIFICATION_CODE_EXPIRY_MINUTES)
+            if datetime.utcnow() > expiry_time:
+                logger.warning(f"Expired verification code for user: {user.email}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Mã xác minh đã hết hạn, vui lòng yêu cầu mã mới"
+                )
+
+        # User đã verify trước đó
+        if user.is_active:
+            logger.info(f"User {user.email} attempted to re-verify")
+            return {"message": "Email đã được xác minh trước đó."}
+
+        # Cập nhật user
+        user.is_active = True
+        user.verification_code = None
+        user.verification_code_created_at = None
+        db.commit()
+        db.refresh(user)
+        
+        logger.info(f"Email verified for user: {user.email}")
+        return {"message": "Xác minh email thành công"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Email verification error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi hệ thống"
+        )
+
+@router.post("/send-verification")
+def resend_verification(payload: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """Gửi lại mã xác minh"""
+    try:
+        user = db.query(User).filter(User.email == payload.email).first()
+        
+        if not user:
+            logger.warning(f"Resend verification for non-existent email: {payload.email}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email không tồn tại"
+            )
+        
+        if user.is_active:
+            logger.info(f"Resend verification for already verified user: {payload.email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tài khoản đã được xác minh"
+            )
+        
+        # Kiểm tra số lần gửi lại (ngăn spam)
+        if user.verification_attempts and user.verification_attempts >= MAX_VERIFICATION_ATTEMPTS:
+            logger.warning(f"Max verification attempts exceeded: {payload.email}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Bạn đã yêu cầu mã quá nhiều lần, vui lòng thử lại sau"
+            )
+        
+        # Tạo mã mới
+        verification_code = generate_verification_code()
+        user.verification_code = verification_code
+        user.verification_code_created_at = datetime.utcnow()
+        user.verification_attempts = (user.verification_attempts or 0) + 1
+        
+        db.commit()
+        db.refresh(user)
+        
+        # Gửi email
+        email_sent = send_verification_email(user.email, verification_code)
+        if not email_sent:
+            logger.error(f"Failed to resend verification email to {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Không thể gửi email, vui lòng thử lại"
+            )
+        
+        logger.info(f"Verification email resent to: {user.email}")
+        return {"message": "Đã gửi lại mã xác thực"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Resend verification error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi hệ thống"
+        )
+
+@router.get("/users/me", response_model=ProfileResponse)
+def read_current_user(current_user: User = Depends(get_current_user)):
+    return current_user.profile
+
+@router.put("/users/profile", response_model=ProfileResponse)
+def update_profile(profile_in: ProfileUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Cập nhật thông tin profile của user hiện tại"""
+    try:
+        profile = current_user.profile
+        
+        # Chỉ update các field được gửi lên (không None)
+        if profile_in.full_name is not None:
+            profile.full_name = profile_in.full_name
+        if profile_in.avatar is not None:
+            profile.avatar = profile_in.avatar
+        if profile_in.phone is not None:
+            profile.phone = profile_in.phone
+        if profile_in.gender is not None:
+            profile.gender = profile_in.gender
+        if profile_in.dob is not None:
+            profile.dob = profile_in.dob
+        
+        db.commit()
+        db.refresh(profile)
+        
+        logger.info(f"Profile updated for user: {current_user.email}")
+        return profile
+    
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Profile update error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi hệ thống"
+        )
+
+@router.get("/google/login")
+async def google_login(request: Request):
+    """Redirect đến trang đăng nhập Google"""
+    from app.core.config import settings
+    import secrets
+    try:
+        # Generate state và lưu vào in-memory store
+        state = secrets.token_urlsafe(32)
+        save_oauth_state(state, {'redirect_uri': settings.GOOGLE_REDIRECT_URI})
+        
+        # Pass state qua URL, thêm prompt để buộc chọn tài khoản
+        url = await oauth.google.authorize_redirect(
+            request, 
+            settings.GOOGLE_REDIRECT_URI, 
+            state=state,
+            prompt="select_account"  # Buộc chọn tài khoản mỗi lần
+        )
+        return url
+    except Exception as e:
+        logger.error(f"Google login error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Lỗi đăng nhập Google")
+
+@router.get("/google/callback")
+async def google_callback(request: Request, db: Session = Depends(get_db)):
+    """Xử lý callback từ Google sau khi user đăng nhập"""
+    try:
+        import httpx
+        from app.core.config import settings
+        
+        # Verify state từ in-memory store
+        state = request.query_params.get('state')
+        code = request.query_params.get('code')
+        
+        if not state or not code:
+            raise HTTPException(status_code=400, detail="Missing state or code")
+        
+        if not get_oauth_state(state):
+            raise HTTPException(status_code=400, detail="Invalid or expired state")
+        
+        # Manually exchange code for token
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        }
+        
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(token_url, data=token_data)
+            if token_response.status_code != 200:
+                logger.error(f"Token exchange failed: {token_response.text}")
+                raise HTTPException(status_code=400, detail="Failed to get token from Google")
+            
+            token = token_response.json()
+        
+        # Lấy user info từ token (JWT)
+        import jwt as pyjwt
+        id_token = token.get('id_token')
+        user_info = pyjwt.decode(id_token, options={"verify_signature": False})
+        
+        email = user_info.get('email')
+        name = user_info.get('name', email.split('@')[0])
+        google_id = user_info.get('sub')
+        avatar = user_info.get('picture')
+        
+        # Kiểm tra user đã tồn tại chưa
+        user = db.query(User).filter(User.email == email).first()
+        
+        if user:
+            # User đã tồn tại - update thông tin nếu cần
+            if not user.is_active:
+                user.is_active = True
+                db.commit()
+        else:
+            # Tạo user mới
+            new_profile = Profile(
+                full_name=name,
+                avatar=avatar
+            )
+            db.add(new_profile)
+            db.flush()
+            
+            # Tạo username từ email (hoặc google_id)
+            username = email.split('@')[0] + '_' + google_id[:8]
+            
+            user = User(
+                username=username,
+                email=email,
+                password=hash_password(google_id),  # Password random từ google_id
+                profile_id=new_profile.id,
+                is_active=True,  # Google OAuth tự động verify
+                verification_code=None
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        
+        # Tạo JWT token cho hệ thống
+        access_token = create_access_token(subject=user.email)
+        
+        # Return token response thay vì redirect
+        return {
+            "access_token": access_token,
+            "isActive": user.is_active,
+            "user": UserResponse.model_validate(user)
+        }
+        
+    except Exception as e:
+        logger.error(f"Google OAuth error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lỗi đăng nhập Google"
+        )
+
