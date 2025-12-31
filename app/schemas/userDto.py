@@ -1,3 +1,4 @@
+﻿from datetime import date
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
@@ -11,13 +12,22 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
 
+class ProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    avatar: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[str] = None
+    dob: Optional[date] = None
+
 class ProfileResponse(BaseModel):
     id: int
     full_name: str
     avatar: Optional[str] = None
     phone: Optional[str] = None
+    gender: Optional[str] = None
+    dob: Optional[date] = None
     
-    # dòng này giúp đọc dữ liệu từ ORM model ở dạng object ví dụ User.profile.full_name
+    # d├▓ng n├áy gi├║p ─æß╗ìc dß╗» liß╗çu tß╗½ ORM model ß╗ƒ dß║íng object v├¡ dß╗Ñ User.profile.full_name
     class Config:
         from_attributes = True
 
@@ -37,3 +47,14 @@ class Token(BaseModel):
     token_type: str = "bearer"
     isActive: bool
     user: UserResponse
+
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+class VerifyCodeRequest(BaseModel):
+    verification_code: str
+    
