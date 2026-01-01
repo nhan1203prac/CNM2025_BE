@@ -6,8 +6,8 @@ from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
 
 def generate_verification_code(length: int = 6) -> str:
-    """Tạo mã xác thực ngẫu nhiên gồm số và chữ"""
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+    """Sinh mã xác thực gồm các chữ số (ví dụ: 123456)"""
+    return ''.join(random.choices(string.digits, k=length))
 
 def send_verification_email(email: str, code: str) -> bool:
     """Gửi email chứa mã xác thực"""

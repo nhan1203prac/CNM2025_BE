@@ -123,12 +123,12 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
             )
 
         # Kiểm tra email đã xác minh chưa
-        if not user.is_active:
-            logger.warning(f"Login attempt with unverified email: {user_in.email}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Vui lòng xác minh email trước khi đăng nhập"
-            )
+        # if not user.is_active:
+        #     logger.warning(f"Login attempt with unverified email: {user_in.email}")
+        #     raise HTTPException(
+        #         status_code=status.HTTP_403_FORBIDDEN,
+        #         detail="Vui lòng xác minh email trước khi đăng nhập"
+        #     )
 
         # Update last login time (optional)
         user.last_login = datetime.utcnow()
@@ -212,7 +212,6 @@ def resend_verification(payload: ResendVerificationRequest, db: Session = Depend
                 detail="Tài khoản đã được xác minh"
             )
         
-        # Kiểm tra số lần gửi lại (ngăn spam)
         if user.verification_attempts and user.verification_attempts >= MAX_VERIFICATION_ATTEMPTS:
             logger.warning(f"Max verification attempts exceeded: {payload.email}")
             raise HTTPException(
@@ -253,74 +252,41 @@ def resend_verification(payload: ResendVerificationRequest, db: Session = Depend
 
 @router.post("/forgot-password")
 def forgot_password(payload: PasswordResetRequest, db: Session = Depends(get_db)):
-    """Yêu cầu đặt lại mật khẩu, gửi token qua email"""
     try:
         user = db.query(User).filter(User.email == payload.email).first()
-
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Email không tồn tại"
-            )
+            raise HTTPException(status_code=404, detail="Email không tồn tại")
 
-        reset_token = secrets.token_urlsafe(32)
-        user.password_reset_token = reset_token
+        reset_code = generate_verification_code() 
+        
+        user.password_reset_token = reset_code 
         db.commit()
 
-        email_sent = send_password_reset_email(user.email, reset_token)
+        email_sent = send_password_reset_email(user.email, reset_code)
+        
         if not email_sent:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Không thể gửi email đặt lại mật khẩu"
-            )
+            raise HTTPException(status_code=500, detail="Không thể gửi email")
 
-        logger.info(f"Password reset token generated for {user.email}")
-        return {"message": "Đã gửi token đặt lại mật khẩu qua email"}
-
-    except HTTPException:
-        raise
+        return {"message": "Mã khôi phục đã được gửi qua email"}
     except Exception as e:
         db.rollback()
-        logger.error(f"Forgot password error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Lỗi hệ thống"
-        )
-
+        raise HTTPException(status_code=500, detail="Lỗi hệ thống")
 
 @router.post("/reset-password")
 def reset_password(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
-    """Đặt lại mật khẩu bằng token"""
-    try:
-        user = db.query(User).filter(User.password_reset_token == payload.token).first()
+    user = db.query(User).filter(User.password_reset_token == payload.token).first()
 
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Token không hợp lệ"
-            )
+    if not user:
+        raise HTTPException(status_code=400, detail="Mã xác nhận không đúng hoặc đã hết hạn")
 
-        validate_password(payload.new_password)
-        user.password = hash_password(payload.new_password)
-        user.password_reset_token = None
-        db.commit()
+    user.password = hash_password(payload.new_password)
+    user.password_reset_token = None 
+    db.commit()
 
-        logger.info(f"Password reset for {user.email}")
-        return {"message": "Đặt lại mật khẩu thành công"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Reset password error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Lỗi hệ thống"
-        )
-
-@router.get("/users/me", response_model=ProfileResponse)
+    return {"message": "Mật khẩu đã được thay đổi thành công"}
+@router.get("/users/me", response_model=UserResponse)
 def read_current_user(current_user: User = Depends(get_current_user)):
-    return current_user.profile
+    return current_user
 
 @router.put("/users/profile", response_model=ProfileResponse)
 def update_profile(profile_in: ProfileUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -456,14 +422,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         
         # Tạo JWT token cho hệ thống
         access_token = create_access_token(subject=user.email)
-        
-        # Return token response thay vì redirect
-        return Token(
-            access_token=access_token,
-            token_type="bearer",
-            isActive=user.is_active,
-            user=UserResponse.model_validate(user)
-        )
+        frontend_url = f"http://localhost:3000/login?token={access_token}"
+        return RedirectResponse(url=frontend_url)
         
     except Exception as e:
         logger.error(f"Google OAuth error: {str(e)}", exc_info=True)
