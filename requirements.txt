@@ -9,3 +9,6 @@ mysql-connector-python
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
+itsdangerous
+authlib
+httpx

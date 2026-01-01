@@ -1,4 +1,5 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request 
+from typing import Optional
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -40,11 +41,40 @@ def get_current_active_admin(
         )
     return current_user
 
-def get_current_user(db: Session = Depends(get_db)):
-    # HARD CODE USER ID = 1
-    user = db.query(User).filter(User.id == 1).first()
+# def get_current_user(db: Session = Depends(get_db)):
+#     # HARD CODE USER ID = 1
+#     user = db.query(User).filter(User.id == 1).first()
 
-    if not user:
-        raise Exception("Hardcoded user not found")
+#     if not user:
+#         raise Exception("Hardcoded user not found")
 
-    return user
+#     return user
+
+
+def get_optional_current_user(
+    request: Request, 
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """
+    Dành cho trang Home: 
+    - Có token hợp lệ -> Trả về User (để hiện trái tim đỏ).
+    - Không có token hoặc token sai -> Trả về None (khách vẫn xem được trang).
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload = decode_access_token(token)
+        email: str = payload.get("sub")
+        
+        if email is None:
+            return None
+            
+        user = db.query(User).filter(User.email == email).first()
+        return user
+        
+    except Exception:
+        return None

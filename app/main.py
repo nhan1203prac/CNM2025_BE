@@ -7,9 +7,12 @@ from app.api.product import router as product_router
 from app.api.category import router as category_router
 from app.api.cart import router as cart_router
 from app.api.favorites import router as favorites_router
+from app.api.home_data import router as home_data_router
+
 from app.db.base import Base
 from app.db.session import engine
 from app.core.config import settings
+from fastapi.middleware.cors import CORSMiddleware
 
 security = HTTPBearer()
 
@@ -18,8 +21,14 @@ app = FastAPI(
     swagger_ui_parameters={"syntaxHighlight.theme": "monokai"},
 )
 
-# Add SessionMiddleware for Google OAuth
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"],
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,6 +37,8 @@ app.include_router(product_router, prefix="/api/v1") # /api/v1/products
 app.include_router(category_router, prefix="/api/v1") # /api/v1/categories
 app.include_router(cart_router, prefix="/api/v1")
 app.include_router(favorites_router, prefix="/api/v1")
+app.include_router(home_data_router, prefix="/api/v1")
+
 
 @app.get("/")
 async def root():
@@ -54,7 +65,6 @@ def custom_openapi():
         }
     }
     
-    # Áp dụng security cho tất cả endpoints (ngoại trừ register, login, etc)
     openapi_schema["security"] = [{"BearerAuth": []}]
     
     app.openapi_schema = openapi_schema
