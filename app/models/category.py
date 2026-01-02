@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, Boolean
+from sqlalchemy.orm import relationship
 from app.db.base_class import Base
 
 class Category(Base):
@@ -6,5 +7,8 @@ class Category(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False, unique=True)
+    slug = Column(String(100), nullable=False, unique=True)
     description = Column(Text, nullable=True)
-    image_url = Column(Text)
+    image_url = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    products = relationship("Product", back_populates="category")
