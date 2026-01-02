@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import uuid
 from app.db.session import get_db
-from app.models.order import Order
+from CNM2025_BE.app.models.order import Order
 from app.models.order_item import OrderItem
 from app.models.cart_item import CartItem
 from app.models.product import Product

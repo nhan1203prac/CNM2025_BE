@@ -6,7 +6,7 @@ import stripe
 import os
 
 from app.db.session import get_db
-from app.models.order import Order
+from CNM2025_BE.app.models.order import Order
 
 router = APIRouter(prefix="/payment", tags=["Payment"])
 

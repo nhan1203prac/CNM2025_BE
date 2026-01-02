@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DECIMAL, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
 from app.db.base_class import Base
 
 class Product(Base):
@@ -15,5 +16,8 @@ class Product(Base):
     rating_avg = Column(DECIMAL(2,1), default=0)
     reviews_count = Column(Integer, default=0)
     sold_count = Column(Integer, default=0)
+    stock = Column(Integer, default=0)
     main_image = Column(Text)
     is_new = Column(Boolean, default=False)
+    category = relationship("Category", back_populates="products")
+    images = relationship("ProductImage", backref="product", cascade="all, delete-orphan")
