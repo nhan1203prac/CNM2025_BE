@@ -24,4 +24,5 @@ class Order(Base):
     payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
     shipping_status = Column(Enum(ShippingStatus), default=ShippingStatus.PENDING, nullable=False)
     created_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     user = relationship("User", backref="orders")

@@ -7,6 +7,7 @@ from app.api.product import router as product_router
 from app.api.category import router as category_router
 from app.api.cart import router as cart_router
 from app.api.favorites import router as favorites_router
+from app.api.orders import router as orders_router
 from app.api.home_data import router as home_data_router
 from app.api.admin import router as admin_router
 from app.api.admin_order import router as admin_order_router
@@ -41,6 +42,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(product_router, prefix="/api/v1") 
 app.include_router(category_router, prefix="/api/v1") 
 app.include_router(cart_router, prefix="/api/v1")
+app.include_router(orders_router, prefix="/api/v1")
 app.include_router(favorites_router, prefix="/api/v1")
 app.include_router(home_data_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1/admin")
