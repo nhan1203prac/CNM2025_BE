@@ -1,47 +1,47 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 import uuid
 from app.db.session import get_db
-from CNM2025_BE.app.models.order import Order
+from app.models.order import Order, ShippingStatus 
 from app.models.order_item import OrderItem
 from app.models.cart_item import CartItem
 from app.models.product import Product
+from app.schemas.order import OrderResponse 
+from app.api.deps import get_current_user
+from typing import List
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
-# USER CỐ ĐỊNH ĐỂ TEST
-TEST_USER_ID = 1
-
 # POST /orders/checkout
-# Tạo đơn hàng từ giỏ hàng
 @router.post("/checkout", status_code=201)
-def checkout(db: Session = Depends(get_db)):
+def checkout(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user) 
+):
     cart_items = (
         db.query(CartItem)
-        .filter(CartItem.user_id == TEST_USER_ID)
+        .filter(CartItem.user_id == current_user.id)
         .all()
     )
 
     if not cart_items:
         raise HTTPException(status_code=400, detail="Giỏ hàng trống")
 
-    order_id = str(uuid.uuid4())
     total_amount = 0
-
+    
     order = Order(
-        id=order_id,
-        user_id=TEST_USER_ID,
+        user_id=current_user.id,
         total_amount=0,
-        status="Chờ xử lý"
+        shipping_status="PENDING"
     )
 
     db.add(order)
     db.flush() 
 
     for item in cart_items:
-        product = db.query(Product).get(item.product_id)
+        product = db.query(Product).filter(Product.id == item.product_id).first()
         if not product:
-            raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
+            continue
 
         total_amount += product.price * item.quantity
 
@@ -49,7 +49,9 @@ def checkout(db: Session = Depends(get_db)):
             order_id=order.id,
             product_id=product.id,
             quantity=item.quantity,
-            price_at_purchase=product.price
+            price_at_purchase=product.price,
+            selected_size=getattr(item, 'selectedSize', None), 
+            selected_color=getattr(item, 'selectedColor', None) 
         )
 
         db.add(order_item)
@@ -62,30 +64,41 @@ def checkout(db: Session = Depends(get_db)):
     return {
         "order_id": order.id,
         "total_amount": float(order.total_amount),
-        "status": order.status
+        "status": order.shipping_status
     }
 
 # GET /orders
-# Lấy lịch sử đơn hàng
-@router.get("")
-def get_orders(db: Session = Depends(get_db)):
+@router.get("", response_model=List[OrderResponse]) 
+def get_orders(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
     orders = (
         db.query(Order)
-        .filter(Order.user_id == TEST_USER_ID)
+        .options(
+            joinedload(Order.items).joinedload(OrderItem.product)
+        )
+        .filter(Order.user_id == current_user.id)
         .order_by(Order.created_at.desc())
         .all()
     )
     return orders
 
 # GET /orders/{order_id}
-# Xem chi tiết đơn hàng
-@router.get("/{order_id}")
-def get_order_detail(order_id: str, db: Session = Depends(get_db)):
+@router.get("/{order_id}", response_model=OrderResponse)
+def get_order_detail(
+    order_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
     order = (
         db.query(Order)
+        .options(
+            joinedload(Order.items).joinedload(OrderItem.product)
+        )
         .filter(
             Order.id == order_id,
-            Order.user_id == TEST_USER_ID
+            Order.user_id == current_user.id 
         )
         .first()
     )
@@ -95,31 +108,25 @@ def get_order_detail(order_id: str, db: Session = Depends(get_db)):
 
     return order
 
-# PUT /orders/{order_id}/status
-# Cập nhật trạng thái đơn hàng (giả admin)
-@router.put("/{order_id}/status")
-def update_order_status(
-    order_id: str,
-    new_status: str,
-    db: Session = Depends(get_db)
+# PUT /orders/{order_id}/status (Cho khách hàng Hủy đơn)
+@router.put("/{order_id}/cancel")
+def cancel_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    allowed_status = ["Chờ xử lý", "Đang vận chuyển", "Đã giao"]
-
-    if new_status not in allowed_status:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Trạng thái phải là một trong: {allowed_status}"
-        )
-
-    order = db.query(Order).filter(Order.id == order_id).first()
+    order = db.query(Order).filter(
+        Order.id == order_id, 
+        Order.user_id == current_user.id
+    ).first()
+    
     if not order:
         raise HTTPException(status_code=404, detail="Đơn hàng không tồn tại")
+    
+    if order.shipping_status != "PENDING":
+        raise HTTPException(status_code=400, detail="Chỉ có thể hủy đơn hàng đang chờ xử lý")
 
-    order.status = new_status
+    order.shipping_status = "CANCELLED"
     db.commit()
-    db.refresh(order)
-
-    return {
-        "order_id": order.id,
-        "status": order.status
-    }
+    
+    return {"message": "Đã hủy đơn hàng thành công"}

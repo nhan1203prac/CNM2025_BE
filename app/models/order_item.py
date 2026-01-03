@@ -12,4 +12,5 @@ class OrderItem(Base):
     selected_size = Column(String(20))
     selected_color = Column(String(50))
 
-    order = relationship("Order", backref="items")
+    order = relationship("Order", back_populates="items")
+    product = relationship("Product")
