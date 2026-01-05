@@ -21,3 +21,4 @@ class Product(Base):
     is_new = Column(Boolean, default=False)
     category = relationship("Category", back_populates="products")
     images = relationship("ProductImage", backref="product", cascade="all, delete-orphan")
+    variants = relationship("ProductVariant", backref="product", cascade="all, delete-orphan")
