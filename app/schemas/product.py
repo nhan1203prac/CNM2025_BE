@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
-
+from typing import List
 class ProductBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -22,5 +22,26 @@ class ProductResponse(ProductBase):
     reviews_count: Optional[int] = 0
     sold_count: Optional[int] = 0
 
+    class Config:
+        from_attributes = True
+
+class PaginatedProductResponse(BaseModel):
+    items: List[ProductResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+    class Config:
+        from_attributes = True
+
+class ProductDetailResponse(BaseModel):
+    product: ProductResponse
+    related: List[ProductResponse]
+
+    colors: List[str] = []
+    storages: List[str] = []
+    sizes: List[str] = []
+    
     class Config:
         from_attributes = True

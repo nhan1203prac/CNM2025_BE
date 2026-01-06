@@ -14,6 +14,9 @@ from app.api.admin_order import router as admin_order_router
 from app.api.admin_category import router as admin_category_router
 from app.api.admin_product import router as admin_product_router
 from app.api.admin_user import router as admin_user_router
+from app.api.profile import router as profile_dashboard
+from app.api.address import router as address
+from app.api.notification import router as notifications
 
 from app.db.base import Base
 from app.db.session import engine
@@ -50,6 +53,9 @@ app.include_router(admin_order_router, prefix="/api/v1/admin")
 app.include_router(admin_category_router, prefix="/api/v1/admin/categories")
 app.include_router(admin_product_router, prefix="/api/v1/admin/products")
 app.include_router(admin_user_router, prefix="/api/v1/admin/users")
+app.include_router(profile_dashboard, prefix="/api/v1/profile-dashboard")
+app.include_router(address, prefix="/api/v1/addresses")
+app.include_router(notifications, prefix="/api/v1/notifications")
 
 @app.get("/")
 async def root():

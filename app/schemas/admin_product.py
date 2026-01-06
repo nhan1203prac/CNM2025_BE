@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from decimal import Decimal
 
@@ -16,6 +16,10 @@ class ProductBase(BaseModel):
     stock: int = 0
     main_image: Optional[str] = None
     is_new: Optional[bool] = False
+    # --- THÊM VÀO ĐÂY ---
+    colors: Optional[List[str]] = []
+    storages: Optional[List[str]] = []
+    sizes: Optional[List[str]] = []
 
 class ProductCreate(ProductBase):
     images: Optional[List[str]] = []
@@ -31,11 +35,13 @@ class ProductUpdate(ProductBase):
     main_image: Optional[str] = None
     is_new: Optional[bool] = None
     images: Optional[List[str]] = None
+    colors: Optional[List[str]] = None
+    storages: Optional[List[str]] = None
+    sizes: Optional[List[str]] = None
 
 class ProductAdminResponse(ProductBase):
     id: int
     category_name: Optional[str] = None
     images: List[str] = [] 
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
