@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.profile import Profile
 from app.api.deps import get_current_active_admin
 from app.schemas.admin_order import OrderPaginationResponse
+from app.models.notification import Notification
 from typing import Optional
 import math
 
@@ -73,10 +74,33 @@ def update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Không thấy đơn hàng")
     
-    if "shippingStatus" in payload:
-        order.shipping_status = payload["shippingStatus"].upper()
-    if "paymentStatus" in payload:
-        order.payment_status = payload["paymentStatus"].upper()
+    new_shipping_status = payload.get("shippingStatus")
+    new_payment_status = payload.get("paymentStatus")
+
+    if new_shipping_status:
+        order.shipping_status = new_shipping_status.upper()
+    if new_payment_status:
+        order.payment_status = new_payment_status.upper()
         
     db.commit()
-    return {"message": "Cập nhật thành công"}
+
+    if new_shipping_status:
+        status_vi = {
+            "SHIPPING": "đang được giao",
+            "DELIVERED": "đã giao thành công",
+            "CANCELLED": "đã bị hủy",
+            "PENDING": "đang chờ xử lý"
+        }
+        text_status = status_vi.get(new_shipping_status.upper(), new_shipping_status)
+        
+        new_notif = Notification(
+            user_id=order.user_id,
+            title=f"Cập nhật đơn hàng #{order.id}",
+            content=f"Đơn hàng của bạn {text_status}. Vui lòng kiểm tra lộ trình đơn hàng.",
+            type="order",
+            is_read=False
+        )
+        db.add(new_notif)
+        db.commit() 
+
+    return {"message": "Cập nhật trạng thái thành công"}
