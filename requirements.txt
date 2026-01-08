@@ -12,3 +12,5 @@ python-multipart
 itsdangerous
 authlib
 httpx
+stripe>=8
+PyJWT
