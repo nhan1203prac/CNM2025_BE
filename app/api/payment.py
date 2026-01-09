@@ -6,6 +6,7 @@ import stripe
 from app.api.deps import get_current_user, get_db
 from app.core.config import settings
 from app.models.order import Order, PaymentStatus
+from app.models.notification import Notification
 
 router = APIRouter(prefix="/payment", tags=["Payment"])
 
@@ -72,11 +73,40 @@ def refund_order(order_id: int, db: Session = Depends(get_db), user = Depends(ge
     order = _get_order(db, order_id, user.id)
     if not order.payment_intent_id:
         raise HTTPException(400, "Đơn hàng này chưa được thanh toán qua hệ thống")
+    if order.payment_status != PaymentStatus.PAID:
+        raise HTTPException(400, "Đơn hàng chưa thanh toán thành công, không thể hoàn tiền")
 
-    refund = stripe.Refund.create(payment_intent=order.payment_intent_id)
-    order.payment_status = PaymentStatus.REFUNDED
-    db.commit()
-    return {"refund_id": refund.id, "status": refund.status}
+    try:
+        # Đảm bảo PaymentIntent đã thành công và có charge để hoàn tiền
+        intent = stripe.PaymentIntent.retrieve(order.payment_intent_id)
+        status_pi = intent.get("status")
+        if status_pi != "succeeded":
+            raise HTTPException(400, f"PaymentIntent chưa thành công (status={status_pi}), không thể hoàn tiền")
+
+        charges = intent.get("charges", {}).get("data", [])
+        if not charges:
+            raise HTTPException(400, "Không tìm thấy giao dịch (charge) để hoàn tiền")
+
+        charge_id = charges[0]["id"]
+        refund = stripe.Refund.create(charge=charge_id)
+
+        # Chỉ đánh dấu REFUNDED khi Stripe trả về thành công ngay
+        if getattr(refund, "status", None) == "succeeded":
+            order.payment_status = PaymentStatus.REFUNDED
+            db.commit()
+
+        return {"refund_id": refund.id, "status": refund.status}
+
+    except stripe.error.StripeError as e:  # type: ignore[attr-defined]
+        # Trả lỗi 400 có thông điệp rõ ràng thay vì 500
+        message = getattr(e, "user_message", None) or str(e)
+        raise HTTPException(400, detail=message)
+    except HTTPException:
+        # Ném lại các HTTPException đã được chuẩn hóa
+        raise
+    except Exception as e:
+        # Bắt mọi lỗi khác thành 400 để client hiểu được
+        raise HTTPException(400, detail=str(e))
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
@@ -100,6 +130,15 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             # Tự động map các sự kiện quan trọng
             if event["type"] == "payment_intent.succeeded":
                 order.payment_status = PaymentStatus.PAID
+                
+                # Tạo thông báo cho user khi thanh toán thành công
+                notification = Notification(
+                    user_id=order.user_id,
+                    title="Thanh toán thành công",
+                    content=f"Đơn hàng #{order.id} của bạn đã được thanh toán thành công. Tổng tiền: {order.total_amount} VND",
+                    type="payment"
+                )
+                db.add(notification)
                 db.commit()
             elif event["type"] in ["payment_intent.payment_failed", "payment_intent.canceled"]:
                 # Có thể giữ PENDING hoặc chuyển sang FAILED tùy logic của bạn
@@ -110,3 +149,4 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 db.commit()
 
     return {"received": True}
+    
