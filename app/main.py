@@ -17,6 +17,7 @@ from app.api.admin_user import router as admin_user_router
 from app.api.profile import router as profile_dashboard
 from app.api.address import router as address
 from app.api.notification import router as notifications
+from app.api.payment import router as payment_router
 
 from app.db.base import Base
 from app.db.session import engine
