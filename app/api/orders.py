@@ -13,8 +13,8 @@ from typing import List
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 # POST /orders/checkout
-@router.post("/checkout", status_code=201)
-def checkout(
+@router.post("/create", status_code=201)
+def createOrder(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user) 
 ):

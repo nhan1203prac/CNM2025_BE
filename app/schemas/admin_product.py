@@ -16,7 +16,6 @@ class ProductBase(BaseModel):
     stock: int = 0
     main_image: Optional[str] = None
     is_new: Optional[bool] = False
-    # --- THÊM VÀO ĐÂY ---
     colors: Optional[List[str]] = []
     storages: Optional[List[str]] = []
     sizes: Optional[List[str]] = []

@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
     STRIPE_SUCCESS_URL: str = "http://localhost:3000/payment-success?session_id={CHECKOUT_SESSION_ID}"
     STRIPE_CANCEL_URL: str = "http://localhost:3000/payment-cancel"
-    STRIPE_CURRENCY: str = "usd"
+    STRIPE_CURRENCY: str = "vnd"
 
     # Tự động tìm file .env ở thư mục gốc
     model_config = SettingsConfigDict(

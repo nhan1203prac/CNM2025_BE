@@ -57,6 +57,7 @@ app.include_router(admin_user_router, prefix="/api/v1/admin/users")
 app.include_router(profile_dashboard, prefix="/api/v1/profile-dashboard")
 app.include_router(address, prefix="/api/v1/addresses")
 app.include_router(notifications, prefix="/api/v1/notifications")
+app.include_router(payment_router, prefix = "/api/v1")
 
 @app.get("/")
 async def root():
