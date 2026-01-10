@@ -54,20 +54,16 @@ def read_products(
 
 @router.get("/{id}", response_model=ProductDetailResponse)
 def read_product_detail(id: int, db: Session = Depends(get_db)):
-    # 1. Truy vấn sản phẩm và eager load các bảng liên quan (images, variants)
     product = db.query(Product).filter(Product.id == id).first()
     
     if not product:
         raise HTTPException(status_code=404, detail="Sản phẩm không tồn tại")
     
-    # 2. Lấy sản phẩm liên quan
     related_products = db.query(Product).filter(
         Product.category_id == product.category_id,
         Product.id != id
     ).limit(4).all()
 
-    # 3. Bóc tách dữ liệu từ bảng ProductVariant (Dữ liệu thật từ DB)
-    # Dùng .strip().lower() để so sánh chính xác, tránh lỗi Case Sensitive (Color vs color)
     colors = [
         v.variant_value for v in product.variants 
         if v.variant_type and v.variant_type.strip().lower() == "color"
@@ -89,15 +85,15 @@ def read_product_detail(id: int, db: Session = Depends(get_db)):
         "sizes": sizes
     }
 
-# POST /products: Thêm sản phẩm (Admin)
-@router.post("/", response_model=ProductResponse)
-def create_product(
-    product_in: ProductCreate,
-    db: Session = Depends(get_db),
-    current_admin = Depends(get_current_active_admin) # Yêu cầu Token & Admin
-):
-    product = Product(**product_in.dict())
-    db.add(product)
-    db.commit()
-    db.refresh(product)
-    return product
+# # POST /products: Thêm sản phẩm (Admin)
+# @router.post("/", response_model=ProductResponse)
+# def create_product(
+#     product_in: ProductCreate,
+#     db: Session = Depends(get_db),
+#     current_admin = Depends(get_current_active_admin) # Yêu cầu Token & Admin
+# ):
+#     product = Product(**product_in.dict())
+#     db.add(product)
+#     db.commit()
+#     db.refresh(product)
+#     return product

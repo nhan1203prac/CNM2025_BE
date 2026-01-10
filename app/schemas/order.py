@@ -21,5 +21,6 @@ class OrderResponse(BaseModel):
     id: int
     total_amount: float
     shipping_status: str
+    payment_status: str
     created_at: datetime
     items: List[OrderItemResponse] = [] 

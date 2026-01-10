@@ -18,11 +18,10 @@ def get_products(
     search: Optional[str] = Query(None),       
     category_id: Optional[int] = Query(None)
 ):
-    # Load thêm variants để tránh lỗi "lazy loading"
     query = db.query(Product).options(
         joinedload(Product.category),
         joinedload(Product.images),
-        joinedload(Product.variants) # Load thêm cái này
+        joinedload(Product.variants) 
     )
 
     if search:
@@ -34,7 +33,6 @@ def get_products(
 
     results = []
     for p in products:
-        # Bóc tách variants thành các mảng riêng biệt
         colors = [v.variant_value for v in p.variants if v.variant_type.lower() == "color"]
         storages = [v.variant_value for v in p.variants if v.variant_type.lower() == "storage"]
         sizes = [v.variant_value for v in p.variants if v.variant_type.lower() == "size"]
