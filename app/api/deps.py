@@ -19,17 +19,21 @@ def get_current_user(
     )
     
     try:
-        # Giải mã token
         payload = decode_access_token(token)
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
+        
+        
     except Exception:
         raise credentials_exception
 
     user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        raise credentials_exception
+    if user is None: 
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
 def get_current_active_admin(
@@ -78,3 +82,4 @@ def get_optional_current_user(
         
     except Exception:
         return None
+
