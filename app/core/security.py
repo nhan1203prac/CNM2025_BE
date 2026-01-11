@@ -108,7 +108,7 @@ def get_current_user_from_token(token: str = Depends(get_token_from_header)) -> 
                 detail="Invalid token: missing subject",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+       
         logger.info(f"Token decoded successfully, email: {email}")
         return email
     except HTTPException:

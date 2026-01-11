@@ -21,7 +21,7 @@ class ProductResponse(ProductBase):
     rating_avg: Optional[Decimal] = 0
     reviews_count: Optional[int] = 0
     sold_count: Optional[int] = 0
-
+    is_favorite: bool = False
     class Config:
         from_attributes = True
 

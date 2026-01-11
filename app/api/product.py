@@ -5,8 +5,11 @@ from decimal import Decimal
 from sqlalchemy import desc
 from app.db.session import get_db
 from app.models.product import Product
+from app.models.favorite import Favorite
+from app.models.user import User
 from app.schemas.product import ProductCreate, ProductResponse, PaginatedProductResponse, ProductDetailResponse
 from app.api.deps import get_current_active_admin
+from app.api.deps import get_optional_current_user
 router = APIRouter(prefix="/products", tags=["Products"])
 
 
@@ -19,10 +22,13 @@ def read_products(
     max_price: Optional[Decimal] = Query(None),
     category_id: Optional[int] = Query(None),
     rating: Optional[int] = Query(None, ge=1, le=5),
-    search: Optional[str] = Query(None)
+    search: Optional[str] = Query(None),
+    current_user = Depends(get_optional_current_user)
 ):
+    # 1. Khởi tạo Query
     query = db.query(Product)
 
+    # 2. Áp dụng Filters
     if category_id:
         query = query.filter(Product.category_id == category_id)
     if min_price:
@@ -34,21 +40,35 @@ def read_products(
     if rating:
         query = query.filter(Product.rating_avg >= rating)
 
+    # 3. Pagination & Sorting
     query = query.order_by(desc(Product.id))
     total_items = query.count()
     total_pages = (total_items + size - 1) // size
-
     skip = (page - 1) * size
     products = query.offset(skip).limit(size).all()
 
+
+    fav_set = set()
+
+    if current_user:
+        fav_ids = db.query(Favorite.product_id).filter(Favorite.user_id == current_user.id).all()
+        fav_set = {f[0] for f in fav_ids}
+
+    final_products = []
+    
+    for p in products:
+        product_data = ProductResponse.model_validate(p) 
+        
+        product_data.is_favorite = (p.id in fav_set)
+
+        final_products.append(product_data)
     return {
-        "items": products,
+        "items": final_products, 
         "total": total_items,
         "page": page,
         "size": size,
         "pages": total_pages
     }
-
 
 # app/api/v1/endpoints/products.py
 
