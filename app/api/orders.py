@@ -42,7 +42,15 @@ def createOrder(
         product = db.query(Product).filter(Product.id == item.product_id).first()
         if not product:
             continue
+        
+        if product.stock < item.quantity:
+            db.rollback() 
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Sản phẩm {product.name} không đủ số lượng trong kho"
+            )
 
+        product.stock -= item.quantity
         total_amount += product.price * item.quantity
 
         order_item = OrderItem(
