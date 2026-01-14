@@ -87,6 +87,7 @@ def update_order_status(
     if new_shipping_status:
         status_vi = {
             "SHIPPING": "đang được giao",
+            "CONFIRMED": "Đã xác nhận",
             "DELIVERED": "đã giao thành công",
             "CANCELLED": "đã bị hủy",
             "PENDING": "đang chờ xử lý"
