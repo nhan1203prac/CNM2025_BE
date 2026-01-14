@@ -14,6 +14,7 @@ def get_all_categories(db: Session = Depends(get_db)):
         Category, 
         func.count(Product.id).label("total")
     ).outerjoin(Product, Category.id == Product.category_id)\
+     .filter(Category.is_active == True)\
      .group_by(Category.id)\
      .all()
 

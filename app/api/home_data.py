@@ -14,7 +14,9 @@ def get_home_page_data(db: Session = Depends(get_db), current_user = Depends(get
     categories_query = db.query(
         Category, 
         func.count(Product.id).label("total")
-    ).outerjoin(Product, Category.id == Product.category_id).group_by(Category.id).limit(8).all()
+    ).outerjoin(Product, Category.id == Product.category_id)\
+     .filter(Category.is_active == True)\
+     .group_by(Category.id).limit(8).all()
 
     categories_data = [
         {

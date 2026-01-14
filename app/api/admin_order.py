@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func, cast, String 
 from app.db.session import get_db
-from app.models.order import Order
+from app.models.order import Order, ShippingStatus, PaymentStatus
 from app.models.user import User
 from app.models.profile import Profile
 from app.api.deps import get_current_active_admin
@@ -103,4 +103,37 @@ def update_order_status(
         db.add(new_notif)
         db.commit() 
 
+    return {"message": "Cập nhật trạng thái thành công"}
+
+
+@router.delete("/orders/{order_id}")
+def delete_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_admin = Depends(get_current_active_admin)
+):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Không thấy đơn hàng")
+    
+    if order.shipping_status not in [ShippingStatus.DELIVERED, ShippingStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=400, 
+            detail="Chỉ có thể xóa đơn hàng đã hoàn thành hoặc đã hủy"
+        )
+    try:
+    
+        db.delete(order)
+        db.commit()
+
+        return {"message": "Đã xóa đơn hàng thành công"}
+    
+    except Exception as e:
+        db.rollback()
+        print(f"Delete Order Error: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Lỗi hệ thống khi xóa đơn hàng"
+        )
+    
     return {"message": "Cập nhật trạng thái thành công"}

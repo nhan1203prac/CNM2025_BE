@@ -39,9 +39,10 @@ def get_categories(
             "slug": cat.slug,
             "description": cat.description,
             "imageUrl": cat.image_url, 
-            "status": "Hiển thị" if cat.is_active else "Đang ẩn",
+            "status": cat.is_active,
             "productCount": p_count or 0
         })
+
     return results
 
 @router.post("/")
@@ -87,10 +88,12 @@ def delete_category(
     if not db_cat:
         raise HTTPException(status_code=404, detail="Không tìm thấy")
     
-    has_products = db.query(Product).filter(Product.category_id == cat_id).first()
-    if has_products:
-        raise HTTPException(status_code=400, detail="Danh mục này đang có sản phẩm, không thể xóa!")
+    # has_products = db.query(Product).filter(Product.category_id == cat_id).first()
+    # if has_products:
+    #     raise HTTPException(status_code=400, detail="Danh mục này đang có sản phẩm, không thể xóa!")
 
-    db.delete(db_cat)
+    db_cat.is_active = False
+
+    # db.delete(db_cat)
     db.commit()
-    return {"message": "Đã xóa danh mục"}
+    return {"message": "Đã ẩn danh mục"}
