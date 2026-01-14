@@ -69,3 +69,6 @@ def get_ghn_shipping_details(to_district_id: int, to_ward_code: str, weight: int
     except Exception as e:
         print(f"GHN Global Error: {e}")
         return default_res
+    
+
+    

@@ -10,6 +10,7 @@ class PaymentStatus(str, enum.Enum):
 
 class ShippingStatus(str, enum.Enum):
     PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
     SHIPPING = "SHIPPING"
     DELIVERED = "DELIVERED"
     CANCELLED = "CANCELLED"
