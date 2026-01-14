@@ -6,7 +6,9 @@ from app.models.order import Order, ShippingStatus
 from app.models.order_item import OrderItem
 from app.models.cart_item import CartItem
 from app.models.product import Product
-from app.schemas.order import OrderResponse 
+from app.models.address import Address
+from app.core.shipping import get_ghn_shipping_details
+from app.schemas.order import OrderResponse, OrderCreateRequest
 from app.api.deps import get_current_user
 from typing import List
 
@@ -15,64 +17,89 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 # POST /orders/checkout
 @router.post("/create", status_code=201)
 def createOrder(
+    order_in: OrderCreateRequest,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user) 
 ):
-    cart_items = (
-        db.query(CartItem)
-        .filter(CartItem.user_id == current_user.id)
-        .all()
-    )
+    address = db.query(Address).filter(
+        Address.id == order_in.address_id, 
+        Address.user_id == current_user.id
+    ).first()
 
+    if not address:
+        raise HTTPException(status_code=404, detail="Địa chỉ giao hàng không hợp lệ")
+    
+    cart_items = db.query(CartItem).filter(CartItem.user_id == current_user.id).all()
     if not cart_items:
         raise HTTPException(status_code=400, detail="Giỏ hàng trống")
 
-    total_amount = 0
-    
-    order = Order(
-        user_id=current_user.id,
-        total_amount=0,
-        shipping_status="PENDING"
+    # GỌI 1 LẦN DUY NHẤT ĐỂ LẤY TẤT CẢ THÔNG TIN SHIP
+    ship_details = get_ghn_shipping_details(
+        to_district_id=address.district_id,
+        to_ward_code=address.ward_code
     )
 
-    db.add(order)
+    new_order = Order(
+        user_id=current_user.id,
+        address_id=address.id,
+        shipping_fee=ship_details["fee"],
+        total_amount=0,
+        subtotal=0,
+        expected_delivery_date=ship_details["expected_delivery"],
+        delivery_deadline=ship_details["deadline"],
+        shipping_status="PENDING",
+        payment_status="PENDING"
+    )
+
+    db.add(new_order)
     db.flush() 
 
+    total_amount_products = 0
     for item in cart_items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
-        if not product:
-            continue
-        
-        if product.stock < item.quantity:
+        product = db.query(Product).filter(Product.id == item.product_id).with_for_update().first()
+        if not product or product.stock < item.quantity:
             db.rollback() 
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Sản phẩm {product.name} không đủ số lượng trong kho"
-            )
+            raise HTTPException(status_code=400, detail=f"Sản phẩm {product.name if product else 'ID '+str(item.product_id)} không đủ hàng")
 
         product.stock -= item.quantity
-        total_amount += product.price * item.quantity
+        total_amount_products += product.price * item.quantity
 
-        order_item = OrderItem(
-            order_id=order.id,
+        db.add(OrderItem(
+            order_id=new_order.id,
             product_id=product.id,
             quantity=item.quantity,
             price_at_purchase=product.price,
-            selected_size=getattr(item, 'selectedSize', None), 
-            selected_color=getattr(item, 'selectedColor', None) 
-        )
+            selected_size=getattr(item, 'selected_size', None), 
+            selected_color=getattr(item, 'selected_color', None) 
+        ))
+        db.delete(item)
 
-        db.add(order_item)
-        db.delete(item) 
+    new_order.total_amount = total_amount_products
+    new_order.subtotal = total_amount_products + ship_details["fee"]
 
-    order.total_amount = total_amount
     db.commit()
-    db.refresh(order)
+    db.refresh(new_order)
 
+    return new_order
+
+
+
+@router.get("/preview-shipping")
+def preview_shipping(address_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    address = db.query(Address).filter(Address.id == address_id, Address.user_id == current_user.id).first()
+    if not address:
+        raise HTTPException(status_code=404, detail="Địa chỉ không hợp lệ")
+    
+    ship_details = get_ghn_shipping_details(
+        to_district_id=address.district_id,
+        to_ward_code=address.ward_code,
+        weight=500
+    )
+    
     return {
-        "order_id": order.id,
-        "total_amount": float(order.total_amount),
-        "status": order.shipping_status
+        "fee": ship_details["fee"],
+        "expected_delivery": ship_details["expected_delivery"],
+        "deadline": ship_details["deadline"]
     }
 
 # GET /orders

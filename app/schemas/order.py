@@ -16,6 +16,9 @@ class OrderItemResponse(BaseModel):
     selected_color: Optional[str]
     product: Optional[ProductInOrder] = None 
 
+class OrderCreateRequest(BaseModel):
+    address_id: int
+
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -23,4 +26,7 @@ class OrderResponse(BaseModel):
     shipping_status: str
     payment_status: str
     created_at: datetime
+    shipping_fee: float
+    expected_delivery_date: Optional[str] = None 
+    delivery_deadline: Optional[str] = None
     items: List[OrderItemResponse] = [] 
