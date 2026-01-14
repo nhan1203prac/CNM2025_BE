@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     STRIPE_CANCEL_URL: str = "http://localhost:3000/payment-cancel"
     STRIPE_CURRENCY: str = "vnd"
 
+    # GHN
+    GHN_TOKEN: Optional[str] = None
+    GHN_SHOPID: Optional[str] = None
+    GHN_FEE_URL: str = "https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/fee"
     # Tự động tìm file .env ở thư mục gốc
     model_config = SettingsConfigDict(
         env_file=".env",
