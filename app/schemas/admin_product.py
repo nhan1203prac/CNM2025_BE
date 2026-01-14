@@ -37,6 +37,7 @@ class ProductUpdate(ProductBase):
     colors: Optional[List[str]] = None
     storages: Optional[List[str]] = None
     sizes: Optional[List[str]] = None
+    is_active: Optional[bool] = None
 
 class ProductAdminResponse(ProductBase):
     id: int

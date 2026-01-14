@@ -22,3 +22,4 @@ class Product(Base):
     category = relationship("Category", back_populates="products")
     images = relationship("ProductImage", backref="product", cascade="all, delete-orphan")
     variants = relationship("ProductVariant", backref="product", cascade="all, delete-orphan")
+    is_active = Column(Boolean, default=True)

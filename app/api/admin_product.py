@@ -49,7 +49,8 @@ def get_products(
             "colors": colors,
             "storages": storages,
             "sizes": sizes,
-            "description": p.description
+            "description": p.description,
+            "is_active": p.is_active
         })
     return results
 

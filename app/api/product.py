@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.models.product import Product
 from app.models.favorite import Favorite
 from app.models.user import User
+from app.models.category import Category
 from app.schemas.product import ProductCreate, ProductResponse, PaginatedProductResponse, ProductDetailResponse
 from app.api.deps import get_current_active_admin
 from app.api.deps import get_optional_current_user
@@ -25,10 +26,11 @@ def read_products(
     search: Optional[str] = Query(None),
     current_user = Depends(get_optional_current_user)
 ):
-    # 1. Khởi tạo Query
-    query = db.query(Product)
-
-    # 2. Áp dụng Filters
+    query = db.query(Product)\
+        .join(Category, Product.category_id == Category.id)\
+        .filter(Category.is_active == True and Product.is_active == True)
+       
+        
     if category_id:
         query = query.filter(Product.category_id == category_id)
     if min_price:
