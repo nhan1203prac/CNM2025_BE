@@ -16,12 +16,21 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     pass
 
+class ProductImageResponse(BaseModel):
+    id: int
+    image_url: str
+
+    class Config:
+        from_attributes = True
+
+
 class ProductResponse(ProductBase):
     id: int
     rating_avg: Optional[Decimal] = 0
     reviews_count: Optional[int] = 0
     sold_count: Optional[int] = 0
     is_favorite: bool = False
+    images: List[ProductImageResponse] = []
     class Config:
         from_attributes = True
 
@@ -45,3 +54,4 @@ class ProductDetailResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
