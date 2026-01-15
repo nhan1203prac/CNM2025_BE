@@ -8,6 +8,8 @@ from app.models.profile import Profile
 from app.api.deps import get_current_active_admin
 from app.schemas.admin_order import OrderPaginationResponse
 from app.models.notification import Notification
+from app.core.shipping import create_ghn_shipping_order
+from app.models.address import Address
 from typing import Optional
 import math
 
@@ -74,13 +76,30 @@ def update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Không thấy đơn hàng")
     
-    new_shipping_status = payload.get("shippingStatus")
-    new_payment_status = payload.get("paymentStatus")
+    new_shipping_status = payload.get("shippingStatus").upper()
+    new_payment_status = payload.get("paymentStatus").upper()
 
+    if new_shipping_status == "CONFIRMED":
+        if not order.tracking_code:
+            address = db.query(Address).filter(Address.id == order.address_id).first()
+            if not address:
+                raise HTTPException(status_code=400, detail="Địa chỉ khách hàng không còn tồn tại")
+            
+            print(f"-> Đang gọi API GHN cho địa chỉ: {address.district_id}, {address.ward_code}")
+
+            tracking_code = create_ghn_shipping_order(order, address)
+            
+            if tracking_code:
+                order.tracking_code = tracking_code
+                print(f"==> THÀNH CÔNG: GHN trả về mã vận đơn: {tracking_code}")
+            else:
+                print("!!! LỖI: Hàm tạo đơn GHN trả về None")
+                raise HTTPException(status_code=400, detail="Lỗi khi tạo đơn hàng trên hệ thống GHN")
+            
     if new_shipping_status:
-        order.shipping_status = new_shipping_status.upper()
+        order.shipping_status = new_shipping_status
     if new_payment_status:
-        order.payment_status = new_payment_status.upper()
+        order.payment_status = new_payment_status
         
     db.commit()
 
@@ -92,19 +111,26 @@ def update_order_status(
             "CANCELLED": "đã bị hủy",
             "PENDING": "đang chờ xử lý"
         }
-        text_status = status_vi.get(new_shipping_status.upper(), new_shipping_status)
+        text_status = status_vi.get(new_shipping_status, new_shipping_status)
         
+        notif_content = f"Đơn hàng của bạn {text_status}."
+        if order.tracking_code:
+            notif_content += f" Mã vận đơn: {order.tracking_code}"
+
         new_notif = Notification(
             user_id=order.user_id,
             title=f"Cập nhật đơn hàng #{order.id}",
-            content=f"Đơn hàng của bạn {text_status}. Vui lòng kiểm tra lộ trình đơn hàng.",
+            content=notif_content,
             type="order",
             is_read=False
         )
         db.add(new_notif)
-        db.commit() 
+        db.commit()
 
-    return {"message": "Cập nhật trạng thái thành công"}
+    return {
+        "message": "Cập nhật trạng thái thành công",
+        "tracking_code": order.tracking_code
+        }
 
 
 @router.delete("/orders/{order_id}")

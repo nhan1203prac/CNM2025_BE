@@ -29,4 +29,5 @@ class OrderResponse(BaseModel):
     shipping_fee: float
     expected_delivery_date: Optional[str] = None 
     delivery_deadline: Optional[str] = None
+    tracking_code: Optional[str] = None # mã vận đơn 
     items: List[OrderItemResponse] = [] 
