@@ -29,6 +29,7 @@ class Order(Base):
     address_id = Column(Integer, ForeignKey("addresses.id"), nullable=True)
     expected_delivery_date = Column(String, nullable=True) 
     delivery_deadline = Column(String, nullable=True)
+    tracking_code = Column(String(50), nullable=True) #mã vận đơn bên ghn tạo
     created_at = Column(TIMESTAMP, server_default=text("CURRENT_TIMESTAMP"))
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     user = relationship("User", backref="orders")
